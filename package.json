@@ -6,7 +6,8 @@
 	"scripts": {
 		"test": "vitest run",
 		"typecheck": "tsc --noEmit",
-		"build": "esbuild src/handler.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/index.cjs"
+		"build": "esbuild src/handler.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/index.cjs",
+		"e2e": "node --env-file-if-exists=.env scripts/e2e.ts"
 	},
 	"packageManager": "pnpm@11.18.0",
 	"devDependencies": {

@@ -162,8 +162,7 @@ form.addEventListener("submit", async (event) => {
 
 Deploys run only from GitHub Actions (`.github/workflows/deploy.yml`):
 - **Pull requests** run typecheck, tests and build.
-- **Pushes to `main`** also apply Terraform, then run a smoke test: `403` without a key, and a stamp cookie with one.
-  No email is sent.
+- **Pushes to `main`** also apply Terraform, then run `pnpm e2e` as a smoke test. No email is sent.
 
 **GitHub secret:** `AWS_ROLE_ARN` is the OIDC role this workflow assumes. Region is `us-east-1`.
 
@@ -189,3 +188,16 @@ pnpm test        # unit + handler tests (AWS mocked), and forms.json checks
 pnpm typecheck
 pnpm build       # dist/index.cjs; Terraform zips it
 ```
+
+## Testing the deployed API
+
+`pnpm e2e` calls the Function URL directly, bypassing CloudFront. It reads `CONTACT_URL` and `CONTACT_SITE_KEY` from
+a gitignored `.env`; copy `.env.example`, which says where to find each value in SSM.
+
+| Command | Checks | Side effects |
+|---|---|---|
+| `pnpm e2e` | 403 without a key; stamp cookie; `too_soon`; honeypot gives a fake success redirect | None |
+| `pnpm e2e --send` | The above, then waits out the dwell time and does a real submit | One email; uses 1 of today's per-IP quota |
+
+These checks can't cover the CloudFront path: real viewer IP, and the site key being overwritten. Verify those
+through a connected site.

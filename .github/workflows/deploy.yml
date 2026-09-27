@@ -61,18 +61,11 @@ jobs:
           terraform init -input=false -backend-config=state.config
           terraform apply -auto-approve -input=false -lock-timeout=5m
 
-      # Cheap post-deploy checks; they never send email.
+      # Safe e2e checks against the first form's site; never sends email.
       - name: Smoke test
         if: github.event_name != 'pull_request'
         run: |
-          url="https://$(terraform -chdir=terraform output -raw origin_domain)"
-          param="$(terraform -chdir=terraform output -json site_key_parameters | jq -r 'to_entries[0].value')"
-          key="$(aws ssm get-parameter --with-decryption --name "$param" --query Parameter.Value --output text)"
-
-          code="$(curl -s -o /dev/null -w '%{http_code}' "$url/api/stamp.gif")"
-          [ "$code" = 403 ] || { echo "Expected 403 without site key, got $code"; exit 1; }
-
-          headers="$(curl -s -D - -o /dev/null -H "x-contact-site-key: $key" "$url/api/stamp.gif")"
-          echo "$headers" | grep -q '^HTTP/[0-9.]* 200' || { echo "Stamp request failed:"; echo "$headers"; exit 1; }
-          echo "$headers" | grep -qi '^set-cookie: stamp=' || { echo "Stamp cookie missing:"; echo "$headers"; exit 1; }
-          echo "Smoke test passed using $param"
+          site="$(jq -r '.forms | to_entries[0].value.site' forms.json)"
+          key="$(aws ssm get-parameter --with-decryption --name "/contact-api/sites/$site/origin-key" --query Parameter.Value --output text)"
+          echo "::add-mask::$key"
+          CONTACT_URL="https://$(terraform -chdir=terraform output -raw origin_domain)" CONTACT_SITE_KEY="$key" pnpm e2e
