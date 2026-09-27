@@ -5,25 +5,30 @@ const SLUG = /^[a-z0-9-]+$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_LIKE = /^(\/|https:\/\/)/;
 
+const DEFAULTS = {
+	from: "a@x.com",
+	honeypots: ["hp"],
+	extraFields: [],
+	messageMin: 1,
+	messageMax: 10,
+	monthlyCap: 5,
+	ipDailyCap: 1,
+};
+const FORM = { site: "s", to: "b@x.com", subject: "S", successUrl: "/ok", errorUrl: "/err" };
+
+function load(form: Record<string, unknown>) {
+	const stamp = { minDwellSec: 1, maxDwellSec: 2 };
+	return loadConfig({ stamp, defaults: DEFAULTS, sites: ["s"], forms: { f: form as never } });
+}
+
 describe("loadConfig", () => {
 	it("merges defaults under each form and adds its id", () => {
-		const loaded = loadConfig({
-			stamp: { minDwellSec: 1, maxDwellSec: 2 },
-			defaults: {
-				from: "a@x.com",
-				honeypots: ["hp"],
-				extraFields: [],
-				messageMin: 1,
-				messageMax: 10,
-				monthlyCap: 5,
-				ipDailyCap: 1,
-			},
-			sites: ["s"],
-			forms: {
-				f: { site: "s", to: "b@x.com", subject: "S", successUrl: "/ok", errorUrl: "/err", monthlyCap: 9 },
-			},
-		});
-		expect(loaded.forms.f).toMatchObject({ id: "f", from: "a@x.com", monthlyCap: 9, ipDailyCap: 1 });
+		const form = load({ ...FORM, monthlyCap: 9 }).forms.f;
+		expect(form).toMatchObject({ id: "f", from: "a@x.com", monthlyCap: 9, ipDailyCap: 1 });
+	});
+
+	it("rejects misspelled form keys instead of silently using the default", () => {
+		expect(() => load({ ...FORM, ipDailycap: 10 })).toThrow('form "f" has unknown keys: ipDailycap');
 	});
 });
 

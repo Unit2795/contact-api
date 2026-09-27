@@ -31,9 +31,10 @@ export async function sendMail(form: FormConfig, submission: Submission, meta: R
 			Destination: { ToAddresses: [form.to] },
 			ReplyToAddresses: [submission.email],
 			Content: {
+				// SES assumes 7-bit ASCII unless told otherwise, which garbles non-English names and messages.
 				Simple: {
-					Subject: { Data: form.subject },
-					Body: { Text: { Data: composeBody(form, submission, meta) } },
+					Subject: { Data: form.subject, Charset: "UTF-8" },
+					Body: { Text: { Data: composeBody(form, submission, meta), Charset: "UTF-8" } },
 				},
 			},
 		}),

@@ -29,7 +29,11 @@ check("No site key -> 403", noKey.status === 403, `got ${noKey.status}`);
 
 const stamp = await fetch(`${url}/api/stamp.gif`, { headers: siteHeaders });
 const cookie = stamp.headers.getSetCookie().find((c) => c.startsWith("stamp="))?.split(";")[0];
-check("Stamp -> 200 + cookie", stamp.status === 200 && !!cookie, `got ${stamp.status}, cookie ${cookie ? "set" : "missing"}`);
+check(
+	"Stamp -> 200 + cookie",
+	stamp.status === 200 && !!cookie,
+	`got ${stamp.status}, cookie ${cookie ? "set" : "missing"}`,
+);
 
 function submit(fields: Record<string, string>, json: boolean): Promise<Response> {
 	return fetch(`${url}/api/contact/${formId}`, {
@@ -44,9 +48,15 @@ function submit(fields: Record<string, string>, json: boolean): Promise<Response
 	});
 }
 
-const early = await submit({}, true);
+// An empty email can never be sent, so this stays safe even if the dwell time has somehow passed.
+// The stamp is checked before the email, so the expected result is still too_soon.
+const early = await submit({ email: "" }, true);
 const earlyBody = await early.text();
-check("Instant submit -> too_soon", early.status === 400 && earlyBody.includes("too_soon"), `got ${early.status} ${earlyBody}`);
+check(
+	"Instant submit -> too_soon",
+	early.status === 400 && earlyBody.includes("too_soon"),
+	`got ${early.status} ${earlyBody}`,
+);
 
 const honeypot = await submit({ [form.honeypots[0]]: "spam" }, false);
 const location = honeypot.headers.get("location");
@@ -62,7 +72,11 @@ if (send) {
 	await new Promise((resolve) => setTimeout(resolve, waitSec * 1000));
 	const real = await submit({}, true);
 	const realBody = await real.text();
-	check(`Real submit -> sent to ${form.to}`, real.status === 200 && realBody === '{"ok":true}', `got ${real.status} ${realBody}`);
+	check(
+		`Real submit -> sent to ${form.to}`,
+		real.status === 200 && realBody === '{"ok":true}',
+		`got ${real.status} ${realBody}`,
+	);
 } else {
 	console.log("ℹ️  Skipped real send (add --send; emails the recipient, uses per-IP quota)");
 }

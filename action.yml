@@ -16,16 +16,19 @@ inputs:
     description: OIDC role to assume. Required when apply is true.
     default: ""
   aws-region:
-    description: Region of the deployment and the Terraform state bucket.
+    description: Region to deploy to. The state bucket's region is set separately in state.config.
     default: us-east-1
 
 runs:
   using: composite
   steps:
+    # Inputs reach scripts through env rather than ${{ }} interpolation, so their values are never parsed as shell.
     - name: Load config
       shell: bash
+      env:
+        CONFIG_DIR: ${{ inputs.config-dir }}
       run: |
-        config="$GITHUB_WORKSPACE/${{ inputs.config-dir }}"
+        config="$GITHUB_WORKSPACE/$CONFIG_DIR"
         cp "$config/forms.json" "$GITHUB_ACTION_PATH/forms.json"
         cp "$config/state.config" "$GITHUB_ACTION_PATH/terraform/state.config"
 
@@ -36,14 +39,15 @@ runs:
         package-manager-cache: false
 
     # Config drift against this version fails here, before anything touches AWS.
+    # Tests run before typecheck because their forms.json failures are far easier to read than type errors.
     - name: Validate and build
       shell: bash
       working-directory: ${{ github.action_path }}
       run: |
         npm install -g "$(node -p "require('./package.json').packageManager")"
         pnpm install --frozen-lockfile
-        pnpm typecheck
         pnpm test
+        pnpm typecheck
         pnpm build
 
     - uses: hashicorp/setup-terraform@v3
@@ -69,9 +73,11 @@ runs:
       if: inputs.apply == 'true'
       shell: bash
       working-directory: ${{ github.action_path }}/terraform
+      env:
+        TF_VAR_aws_region: ${{ inputs.aws-region }}
       run: |
         terraform init -input=false -backend-config=state.config
-        terraform apply -auto-approve -input=false -lock-timeout=5m -var="aws_region=${{ inputs.aws-region }}"
+        terraform apply -auto-approve -input=false -lock-timeout=5m
 
     # Safe e2e checks against the first form's site; never sends email.
     - name: Smoke test

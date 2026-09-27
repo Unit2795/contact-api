@@ -37,9 +37,15 @@ export interface Config {
 	forms: Record<string, FormConfig>;
 }
 
+const REQUIRED_FORM_KEYS = ["site", "to", "subject", "successUrl", "errorUrl"];
+
 export function loadConfig(input: RawConfig): Config {
+	// A misspelled key would otherwise be ignored and the default used, so reject anything unrecognized.
+	const allowedKeys = new Set([...REQUIRED_FORM_KEYS, ...Object.keys(input.defaults)]);
 	const forms: Record<string, FormConfig> = {};
 	for (const [id, entry] of Object.entries(input.forms)) {
+		const unknown = Object.keys(entry).filter((key) => !allowedKeys.has(key));
+		if (unknown.length) throw new Error(`forms.json: form "${id}" has unknown keys: ${unknown.join(", ")}`);
 		forms[id] = { ...input.defaults, ...entry, id };
 	}
 	return { stamp: input.stamp, sites: input.sites, forms };

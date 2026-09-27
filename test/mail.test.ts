@@ -15,7 +15,7 @@ describe("sendMail", () => {
 			FromEmailAddress: "forms@example.com",
 			Destination: { ToAddresses: ["owner@example.com"] },
 			ReplyToAddresses: ["someone@example.com"],
-			Content: { Simple: { Subject: { Data: "Test" } } },
+			Content: { Simple: { Subject: { Data: "Test", Charset: "UTF-8" }, Body: { Text: { Charset: "UTF-8" } } } },
 		});
 		expect(input.Content?.Simple?.Body?.Text?.Data).toBe(
 			[

@@ -1,5 +1,5 @@
-# Sender domain identities are verified and owned elsewhere (djoz.us by the portfolio stack); this stack only
-# references them. The account has SES production access, so recipients need no verification.
+# Sender domain identities must already be verified in SES; this stack only references them. Recipients need no
+# identity unless the account is still in the SES sandbox.
 data "aws_sesv2_email_identity" "sender" {
   for_each       = local.sender_domains
   email_identity = each.key
