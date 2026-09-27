@@ -3,6 +3,10 @@
 One centralized, hardened contact-form backend for all my sites. Every form posts to the same Lambda; each form
 emails a single recipient via SES. Works with plain HTML forms (no JS), and optionally enhanced with JS.
 
+It is built for personal use and costs pennies a month. This repo holds only the code. Each deployment lives in its
+own private config repo, which runs this repo's GitHub Action at a pinned release; see
+[Deploy your own](#deploy-your-own).
+
 ## How it works
 
 ```
@@ -43,7 +47,8 @@ Responses depend on the client:
 
 ## Adding a form
 
-Edit `forms.json`. It is bundled into the Lambda and read by Terraform. `pnpm test` validates it.
+Forms live in `forms.json` in your config repo; start from [`forms.example.json`](forms.example.json). The file is
+bundled into the Lambda and read by Terraform, and the deploy action validates it before touching AWS.
 
 - **`stamp`**: global dwell window in seconds. One stamp cookie covers every form on a site.
 - **`sites`**: site ids. Each gets its own generated origin key.
@@ -71,18 +76,33 @@ already be verified in SES.
 
 ### 1. CDN (CloudFront, in the site's Terraform)
 
+The site needs two values from this API's deployment:
+
+| Value | Where to find it |
+|---|---|
+| Origin domain | Terraform output `origin_domain`, or SSM `/contact-api/origin-domain` |
+| Site key (secret) | SSM SecureString `/contact-api/sites/<site>/origin-key` |
+
+Pass them into the site's Terraform as variables. The site can then live in any AWS account; for example, store the
+key as a CI secret exposed as `TF_VAR_contact_api_site_key`. If the site is in the same account, it can read them
+with `aws_ssm_parameter` data sources instead.
+
 Use exactly these two path patterns rather than `api/*`, so other `/api` routes on the site are unaffected.
 
 ```hcl
-data "aws_ssm_parameter" "contact_origin" { name = "/contact-api/origin-domain" }
-data "aws_ssm_parameter" "contact_key"    { name = "/contact-api/sites/<site>/origin-key" }
+variable "contact_api_origin_domain" { type = string }
+variable "contact_api_site_key" {
+  type      = string
+  sensitive = true
+}
+
 data "aws_cloudfront_cache_policy" "disabled" { name = "Managed-CachingDisabled" }
 data "aws_cloudfront_origin_request_policy" "all_viewer" { name = "Managed-AllViewerExceptHostHeader" }
 
 # Inside the aws_cloudfront_distribution:
 origin {
   origin_id   = "contact-api"
-  domain_name = data.aws_ssm_parameter.contact_origin.value
+  domain_name = var.contact_api_origin_domain
   custom_origin_config {
     http_port              = 80
     https_port             = 443
@@ -91,7 +111,7 @@ origin {
   }
   custom_header {
     name  = "x-contact-site-key"
-    value = data.aws_ssm_parameter.contact_key.value
+    value = var.contact_api_site_key
   }
 }
 
@@ -160,18 +180,21 @@ form.addEventListener("submit", async (event) => {
 
 ## Deploying
 
-Deploys run only from GitHub Actions (`.github/workflows/deploy.yml`):
-- **Pull requests** run typecheck, tests and build.
-- **Pushes to `main`** also apply Terraform, then run `pnpm e2e` as a smoke test. No email is sent.
+This repo never deploys itself. Its CI runs the deploy action against the example config, in validate-only mode.
 
-**GitHub secret:** `AWS_ROLE_ARN` is the OIDC role this workflow assumes. Region is `us-east-1`.
+Deployments run from a private config repo, through the composite action in [`action.yml`](action.yml):
 
-Terraform state lives in the existing `tf-state-djoz-portfolio` bucket under `contact-api/terraform.tfstate`, and
-holds the generated secrets. The role needs:
+| `apply` | What runs | AWS access |
+|---|---|---|
+| `false` (PRs) | Copies in the config, typecheck, tests including `forms.json` checks, build, `terraform validate` | None |
+| `true` (`main`) | The same checks, then `terraform apply`, then `pnpm e2e` as a smoke test (no email) | OIDC role |
+
+Terraform state lives wherever the config repo's `state.config` says. It holds the generated secrets, so keep the
+bucket private. The deploy role needs:
 
 | Service | Access |
 |---|---|
-| S3 | `tf-state-djoz-portfolio`: list, plus get/put/delete on `contact-api/*` (includes the `.tflock` lockfile) |
+| S3 | The state bucket: list, plus get/put/delete on the state key's prefix (includes the `.tflock` lockfile) |
 | Lambda | Manage function `contact-api`, its URL, concurrency and permissions |
 | IAM | Manage role `contact-api` and its inline policy; `iam:PassRole` on it |
 | DynamoDB | Manage table `contact-api-limits`, including TTL and tags |
@@ -180,9 +203,89 @@ holds the generated secrets. The role needs:
 | SES | `ses:GetEmailIdentity` on the sender domains |
 | STS | `sts:GetCallerIdentity` |
 
+## Deploy your own
+
+You don't fork this repo. You create a small **private** config repo that runs this repo's action, so your sites,
+addresses and deploy logs stay private.
+
+### Prerequisites
+
+Everything is in `us-east-1` unless you pass the action's `aws-region` input.
+
+- **SES:** a verified **domain** identity for your sender address, in the same region.
+  - New accounts start in the SES sandbox, where every recipient must also be verified. Either verify each form's
+    `to` address, or request production access.
+- **State bucket:** a private S3 bucket for Terraform state. Enabling versioning is recommended.
+- **Deploy role:** a GitHub OIDC role with the permissions in the table above. Scope its trust policy to your
+  **config repo's** `main` branch, e.g. `token.actions.githubusercontent.com:sub` =
+  `repo:<you>/<config-repo>:ref:refs/heads/main`.
+
+### Config repo
+
+```
+forms.json                    # from forms.example.json
+state.config                  # from terraform/state.config.example
+.github/workflows/deploy.yml
+.github/dependabot.yml
+```
+
+`.github/workflows/deploy.yml`:
+
+```yaml
+name: Deploy
+concurrency: { group: deploy, cancel-in-progress: false }
+on:
+  push: { branches: ["main"] }
+  pull_request:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: Unit2795/contact-api@v1.0.0 # pin a release tag
+        with:
+          apply: ${{ github.event_name != 'pull_request' }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+```
+
+`.github/dependabot.yml`:
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+```
+
+Then add the `AWS_ROLE_ARN` secret and push to `main`. Finally, wire each site's CDN as described in
+[Connecting a site](#connecting-a-site).
+
+### Staying in sync
+
+- **Pinned tag:** new versions never reach your deployment until you bump the tag.
+- **Dependabot PRs:** Dependabot opens a PR for each new release. PRs run in validate-only mode, so they show
+  whether your config still fits the new version, without touching AWS.
+- **Versioning:** releases follow semver. New config options get defaults, so minor releases never break existing
+  configs. A major release may need config changes, and its release notes say what they are.
+
+## Releasing (maintainer)
+
+1. Merge to `main` with CI green. Any config format change must update `forms.example.json` in the same PR; CI
+   validates it.
+2. Tag `vX.Y.Z` and publish a GitHub release. Bump the major version when an existing config would stop validating,
+   and put the migration steps in the release notes.
+
 ## Local development
 
+`forms.json` is gitignored here. Copy `forms.example.json` to it, or copy in a real config to test against.
+
 ```sh
+cp forms.example.json forms.json
 pnpm install
 pnpm test        # unit + handler tests (AWS mocked), and forms.json checks
 pnpm typecheck
@@ -192,7 +295,8 @@ pnpm build       # dist/index.cjs; Terraform zips it
 ## Testing the deployed API
 
 `pnpm e2e` calls the Function URL directly, bypassing CloudFront. It reads `CONTACT_URL` and `CONTACT_SITE_KEY` from
-a gitignored `.env`; copy `.env.example`, which says where to find each value in SSM.
+a gitignored `.env`; copy `.env.example`, which says where to find each value in SSM. The local `forms.json` must
+match the deployment being tested, since the script reads form settings from it.
 
 | Command | Checks | Side effects |
 |---|---|---|

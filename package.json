@@ -1,6 +1,8 @@
 {
 	"name": "contact-api",
 	"version": "1.0.0",
+	"description": "Centralized, hardened contact-form API on AWS Lambda + SES. Works without JS.",
+	"license": "MIT",
 	"private": true,
 	"type": "module",
 	"scripts": {

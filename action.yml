@@ -1,0 +1,83 @@
+name: Deploy contact-api
+description: Validate a contact-api config, build, and optionally deploy it with Terraform.
+
+# Used from a private config repo, pinned to a release tag: `uses: Unit2795/contact-api@vX.Y.Z`.
+# GitHub fetches this repo at that exact tag into github.action_path, so code and config versions stay in lockstep.
+# The caller must check out its config repo first, and grant `id-token: write` when apply is true.
+
+inputs:
+  config-dir:
+    description: Directory in the caller's workspace holding forms.json and state.config.
+    default: "."
+  apply:
+    description: "true: validate, then deploy and smoke test. false: validate only; no AWS access needed (use for PRs)."
+    default: "false"
+  aws-role-arn:
+    description: OIDC role to assume. Required when apply is true.
+    default: ""
+  aws-region:
+    description: Region of the deployment and the Terraform state bucket.
+    default: us-east-1
+
+runs:
+  using: composite
+  steps:
+    - name: Load config
+      shell: bash
+      run: |
+        config="$GITHUB_WORKSPACE/${{ inputs.config-dir }}"
+        cp "$config/forms.json" "$GITHUB_ACTION_PATH/forms.json"
+        cp "$config/state.config" "$GITHUB_ACTION_PATH/terraform/state.config"
+
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 24
+
+    # Config drift against this version fails here, before anything touches AWS.
+    - name: Validate and build
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm install -g "$(node -p "require('./package.json').packageManager")"
+        pnpm install --frozen-lockfile
+        pnpm typecheck
+        pnpm test
+        pnpm build
+
+    - uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_wrapper: false
+
+    - name: Terraform validate
+      if: inputs.apply != 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/terraform
+      run: |
+        terraform init -input=false -backend=false
+        terraform validate
+
+    - uses: aws-actions/configure-aws-credentials@v5
+      if: inputs.apply == 'true'
+      with:
+        role-to-assume: ${{ inputs.aws-role-arn }}
+        role-session-name: contact-api-deploy
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: Terraform apply
+      if: inputs.apply == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/terraform
+      run: |
+        terraform init -input=false -backend-config=state.config
+        terraform apply -auto-approve -input=false -lock-timeout=5m -var="aws_region=${{ inputs.aws-region }}"
+
+    # Safe e2e checks against the first form's site; never sends email.
+    - name: Smoke test
+      if: inputs.apply == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        site="$(jq -r '.forms | to_entries[0].value.site' forms.json)"
+        key="$(aws ssm get-parameter --with-decryption --name "/contact-api/sites/$site/origin-key" --query Parameter.Value --output text)"
+        echo "::add-mask::$key"
+        CONTACT_URL="https://$(terraform -chdir=terraform output -raw origin_domain)" CONTACT_SITE_KEY="$key" pnpm e2e

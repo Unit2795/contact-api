@@ -4,7 +4,7 @@
 		"maxDwellSec": 86400
 	},
 	"defaults": {
-		"from": "forms@djoz.us",
+		"from": "forms@example.com",
 		"honeypots": [],
 		"extraFields": [],
 		"messageMin": 12,
@@ -12,15 +12,25 @@
 		"monthlyCap": 50,
 		"ipDailyCap": 3
 	},
-	"sites": ["portfolio"],
+	"sites": ["portfolio", "blog"],
 	"forms": {
 		"portfolio-contact": {
 			"site": "portfolio",
-			"to": "david@djoz.us",
+			"to": "me@example.com",
 			"subject": "Portfolio contact",
 			"successUrl": "/form-success.html",
 			"errorUrl": "/form-error.html",
 			"honeypots": ["phone", "name", "accept"]
+		},
+		"blog-contact": {
+			"site": "blog",
+			"to": "me@example.com",
+			"subject": "Blog contact",
+			"successUrl": "/thanks",
+			"errorUrl": "/contact-error",
+			"honeypots": ["website"],
+			"extraFields": ["name"],
+			"monthlyCap": 20
 		}
 	}
 }

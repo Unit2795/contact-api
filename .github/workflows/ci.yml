@@ -1,0 +1,29 @@
+name: CI
+
+# Validates the deploy action end to end against the example config. This repo never deploys itself;
+# deployments run from private config repos that pin a release tag of this action.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Stage example config
+        run: |
+          mkdir .example-config
+          cp forms.example.json .example-config/forms.json
+          cp terraform/state.config.example .example-config/state.config
+
+      - uses: ./
+        with:
+          config-dir: .example-config

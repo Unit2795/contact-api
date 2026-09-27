@@ -4,3 +4,5 @@ coverage/
 .terraform/
 *.tfstate*
 .env
+forms.json
+terraform/state.config
