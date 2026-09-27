@@ -1,0 +1,26 @@
+{
+	"stamp": {
+		"minDwellSec": 15,
+		"maxDwellSec": 86400
+	},
+	"defaults": {
+		"from": "forms@djoz.us",
+		"honeypots": [],
+		"extraFields": [],
+		"messageMin": 12,
+		"messageMax": 2000,
+		"monthlyCap": 50,
+		"ipDailyCap": 3
+	},
+	"sites": ["portfolio"],
+	"forms": {
+		"portfolio-contact": {
+			"site": "portfolio",
+			"to": "david@djoz.us",
+			"subject": "Portfolio contact",
+			"successUrl": "/form-success.html",
+			"errorUrl": "/form-error.html",
+			"honeypots": ["phone", "name", "accept"]
+		}
+	}
+}
