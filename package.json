@@ -1,6 +1,6 @@
 {
 	"name": "contact-api",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"description": "Centralized, hardened contact-form API on AWS Lambda + SES. Works without JS.",
 	"license": "MIT",
 	"repository": {
@@ -18,17 +18,17 @@
 		"build": "esbuild src/handler.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/index.cjs",
 		"e2e": "node --env-file-if-exists=.env scripts/e2e.ts"
 	},
-	"packageManager": "pnpm@11.18.0",
+	"packageManager": "pnpm@12.6.0",
 	"devDependencies": {
 		"@types/aws-lambda": "^8.10.163",
-		"@types/node": "^26.6.2",
+		"@types/node": "^24.19.0",
 		"esbuild": "^0.28.2",
 		"typescript": "^7.0.2",
-		"vitest": "^5.0.1"
+		"vitest": "^5.0.2"
 	},
 	"dependencies": {
-		"@aws-sdk/client-dynamodb": "^3.1138.0",
-		"@aws-sdk/client-sesv2": "^3.1137.0",
+		"@aws-sdk/client-dynamodb": "^3.1141.0",
+		"@aws-sdk/client-sesv2": "^3.1141.0",
 		"ipaddr.js": "^2.5.0",
 		"zod": "^4.6.5"
 	}

@@ -32,7 +32,7 @@ runs:
         cp "$config/forms.json" "$GITHUB_ACTION_PATH/forms.json"
         cp "$config/state.config" "$GITHUB_ACTION_PATH/terraform/state.config"
 
-    - uses: actions/setup-node@v6
+    - uses: actions/setup-node@v7
       with:
         node-version: 24
 
@@ -47,7 +47,7 @@ runs:
         pnpm typecheck
         pnpm build
 
-    - uses: hashicorp/setup-terraform@v3
+    - uses: hashicorp/setup-terraform@v4
       with:
         terraform_wrapper: false
 
@@ -59,7 +59,7 @@ runs:
         terraform init -input=false -backend=false
         terraform validate
 
-    - uses: aws-actions/configure-aws-credentials@v5
+    - uses: aws-actions/configure-aws-credentials@v6
       if: inputs.apply == 'true'
       with:
         role-to-assume: ${{ inputs.aws-role-arn }}

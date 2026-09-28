@@ -71,7 +71,7 @@ These checks can't cover the site's proxy: the real client IP, and the proxy ove
 
 ## Releasing (maintainer)
 
-1. Merge to `main` with CI green. Any config format change must update `forms.example.json` in the same PR; CI validates it.
+1. Merge to `main` with CI green. Dependabot opens one weekly PR for the GitHub Actions and one for the npm packages; merge them when CI passes, then release a patch version. Any config format change must update `forms.example.json` in the same PR; CI validates it.
 2. Set `version` in `package.json` to the new version, then tag `vX.Y.Z` on that commit and publish a GitHub release. Bump the major version when an existing config would stop validating, and put the migration steps in the release notes. If the release needs new deploy permissions, say to run the bootstrap again.
 3. Bump the `Unit2795/contact-api@vX.Y.Z` pin in [contact-api-template](https://github.com/Unit2795/contact-api-template)'s `deploy.yml`, so new config repos start on the new version. Its Dependabot would otherwise take up to a week. Copy any config format change into its `forms.json`.
 

@@ -1,0 +1,23 @@
+# One weekly PR per ecosystem. CI runs the whole action on each PR, so a green check means the update works end to end.
+version: 2
+updates:
+  # "/" covers the workflows in .github/workflows and the actions that action.yml uses.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+    ignore:
+      # Types must match the Lambda runtime (nodejs24.x in terraform/lambda.tf). Bump both together.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
