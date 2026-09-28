@@ -38,7 +38,7 @@ function stamp(site: string): Result {
 	};
 }
 
-// Checks run cheapest first; nothing touches AWS until the submission is known to be valid.
+// Checks run cheapest first; nothing calls AWS until the submission is valid.
 async function contact(event: Event, form: FormConfig): Promise<Result> {
 	const json = wantsJson(event.headers.accept);
 	const meta = { ip: viewerIp(event), userAgent: event.headers["user-agent"] ?? "" };
@@ -79,8 +79,10 @@ async function contact(event: Event, form: FormConfig): Promise<Result> {
 	return success(form, json);
 }
 
-// Behind a proxy, sourceIp is the proxy. Non-CloudFront proxies are set up to overwrite X-Real-IP with the client IP;
-// CloudFront strips a viewer-sent X-Real-IP and sends CloudFront-Viewer-Address as `ip:port` instead.
+/*
+ * Behind a proxy, sourceIp is the proxy's address. Proxies other than CloudFront must overwrite X-Real-IP with the client IP.
+ * CloudFront removes a viewer-sent X-Real-IP and sends the client as CloudFront-Viewer-Address (ip:port) instead.
+ */
 function viewerIp(event: Event): string {
 	const realIp = event.headers["x-real-ip"];
 	if (realIp) return realIp;
@@ -88,7 +90,7 @@ function viewerIp(event: Event): string {
 	return viewer ? viewer.slice(0, viewer.lastIndexOf(":")) : event.requestContext.http.sourceIp;
 }
 
-// Fail at cold start rather than, say, signing stamps with an empty secret.
+// Fail when the function starts rather than, say, signing stamps with an empty secret.
 function requireEnv(name: string): string {
 	const value = process.env[name];
 	if (!value) throw new Error(`Missing env var ${name}`);

@@ -1,5 +1,5 @@
-# Sender domain identities must already be verified in SES; this stack only references them. The account must be out
-# of the SES sandbox: there, SES also checks permission on each recipient's identity, which this policy doesn't grant.
+# Sender domain identities must already be verified in SES; this stack only references them.
+# In the SES sandbox, SES also checks the send permission on each recipient's identity. The send policy in lambda.tf covers only the sender domains, so sandbox sends reach only addresses at those domains.
 data "aws_sesv2_email_identity" "sender" {
   for_each       = local.sender_domains
   email_identity = each.key

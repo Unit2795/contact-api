@@ -1,9 +1,9 @@
 name: Deploy contact-api
 description: Validate a contact-api config, build, and optionally deploy it with Terraform.
 
-# Used from a private config repo, pinned to a release tag: `uses: Unit2795/contact-api@vX.Y.Z`.
-# GitHub fetches this repo at that exact tag into github.action_path, so code and config versions stay in lockstep.
-# The caller must check out its config repo first, and grant `id-token: write` when apply is true.
+# Called from a private config repo with uses: Unit2795/contact-api@vX.Y.Z.
+# GitHub fetches this repo at that tag into github.action_path, so the deployed code is always the pinned version.
+# The caller must check out its config repo first, and grant id-token: write when apply is true.
 
 inputs:
   config-dir:
@@ -22,7 +22,7 @@ inputs:
 runs:
   using: composite
   steps:
-    # Inputs reach scripts through env rather than ${{ }} interpolation, so their values are never parsed as shell.
+    # Inputs are passed to scripts through env, not ${{ }} interpolation, so their values are never run as shell code.
     - name: Load config
       shell: bash
       env:
@@ -36,7 +36,7 @@ runs:
       with:
         node-version: 24
 
-    # Config drift against this version fails here, before anything touches AWS.
+    # A forms.json that this version rejects fails here, in pnpm test, before anything touches AWS.
     - name: Validate and build
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -73,9 +73,9 @@ runs:
       env:
         TF_VAR_aws_region: ${{ inputs.aws-region }}
       run: |
-        # Reserving 5 concurrent executions needs an account limit of at least 105, because AWS keeps 100 unreserved.
-        # New accounts often start lower. Then deploy without the cap, and the account limit bounds cost instead.
-        # If the role can't read the limit, keep the cap.
+        # Reserving 5 concurrent executions (the reserved_concurrency default) needs an account limit of at least 105, because AWS keeps 100 unreserved.
+        # New accounts often start lower. Below 105, deploy without reserved concurrency, and the account limit bounds cost instead.
+        # If the role can't read the limit, deploy with the reservation as usual.
         limit="$(aws lambda get-account-settings --query AccountLimit.ConcurrentExecutions --output text 2>/dev/null || true)"
         if [ -n "$limit" ] && [ "$limit" -lt 105 ]; then
           echo "::warning::The account's Lambda concurrency limit is $limit, below the 105 needed to reserve 5. Deploying without reserved concurrency. Ask AWS to raise the 'Concurrent executions' quota to turn the cap on."
@@ -90,7 +90,8 @@ runs:
       shell: bash
       working-directory: ${{ github.action_path }}
       run: |
-        site="$(jq -r '.forms | to_entries[0].value.site' forms.json)"
+        # A form can inherit site from defaults, so merge them as e2e.ts does.
+        site="$(jq -r '(.defaults // {}) + (.forms | to_entries[0].value) | .site' forms.json)"
         key="$(aws ssm get-parameter --with-decryption --name "/contact-api/sites/$site/origin-key" --query Parameter.Value --output text)"
         echo "::add-mask::$key"
         CONTACT_URL="https://$(terraform -chdir=terraform output -raw origin_domain)" CONTACT_SITE_KEY="$key" pnpm e2e

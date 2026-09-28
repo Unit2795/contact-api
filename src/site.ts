@@ -1,7 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 
-// Each site's proxy injects its own secret in this header, overwriting any viewer-sent value.
-// It identifies the site and rejects anything that didn't come through a configured proxy.
+/*
+ * Each site's proxy sets this header to its site key, overwriting any viewer-sent value.
+ * The key identifies the site; requests without a valid key, such as ones sent straight to the Function URL, are rejected.
+ */
 export const SITE_HEADER = "x-contact-site-key";
 
 export function resolveSite(key: string | undefined, siteKeys: Record<string, string>): string | null {

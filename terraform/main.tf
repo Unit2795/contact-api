@@ -1,5 +1,5 @@
 terraform {
-  # Partial config: `terraform init -backend-config=state.config`
+  # Partial config; the rest comes from terraform init -backend-config=state.config.
   backend "s3" {
     use_lockfile = true
     encrypt      = true
@@ -32,9 +32,9 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
-# forms.json is the single source of truth: bundled into the Lambda and read here for sites and senders.
+# forms.json is bundled into the Lambda and read here for sites and sender domains, so both use the same config.
 locals {
-  # Resource names and the SSM path prefix. The smoke test and docs assume this value.
+  # Resource names and the SSM path prefix. The smoke test in action.yml, the deploy role in bootstrap.yml and the docs hard-code this value.
   name         = "contact-api"
   forms_config = jsondecode(file("${path.module}/../forms.json"))
   sites        = toset(local.forms_config.sites)

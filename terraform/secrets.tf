@@ -1,5 +1,4 @@
-# Secrets live only in Terraform state (encrypted S3), the Lambda environment and, for site keys, SSM SecureString
-# parameters. Never in git.
+# Secrets are stored in Terraform state (encrypted S3), the Lambda environment and, for site keys, SSM SecureString parameters. Never in git.
 
 resource "random_password" "hmac_secret" {
   length  = 64
@@ -13,7 +12,7 @@ resource "random_password" "site_key" {
   special  = false
 }
 
-# Published for each site's proxy config to read (or copy) its key.
+# Published so each site's proxy setup can read or copy its key.
 resource "aws_ssm_parameter" "site_key" {
   for_each = local.sites
   name     = "/${local.name}/sites/${each.key}/origin-key"

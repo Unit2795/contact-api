@@ -6,13 +6,13 @@
 
 ## Overview
 
-`forms.json` defines your sites and forms. It is stored in your config repo; start from [`forms.example.json`](../forms.example.json). It is bundled into the Lambda and read by Terraform, and the deploy action validates it before touching AWS. To wire a site to a form, see [Connect a site](connect.md).
+`forms.json` defines your sites and forms. It is stored in your config repo; start from [`forms.example.json`](../forms.example.json). It is bundled into the Lambda and read by Terraform, and the deploy action validates it before touching AWS. To connect a site and its HTML form, see [Connect a site](connect.md).
 
 ## Structure
 
 | Key | Contents |
 | --- | --- |
-| `stamp` | The dwell window in seconds: `minDwellSec` and `maxDwellSec`. It applies to every form. One stamp cookie covers every form on a site, and the cookie expires after `maxDwellSec`. |
+| `stamp` | How long after the stamp cookie is set a submission is accepted, in seconds: from `minDwellSec` to `maxDwellSec`. It applies to every form. One stamp cookie covers every form on a site, and the cookie expires after `maxDwellSec`. |
 | `defaults` | Optional. Values applied to every form unless the form sets its own. |
 | `sites` | Site ids. Each site gets its own generated key. |
 | `forms` | Keyed by form id, which appears in the URL: `/api/contact/<form id>`. |

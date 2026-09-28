@@ -1,7 +1,9 @@
-// End-to-end checks against the deployed Function URL (bypasses the site's proxy).
-// Safe by default: sends no email and uses no rate-limit quota.
-// `--send` adds one real submission: emails the form's recipient and uses 1 of the form's daily per-client quota and 1 of its monthly quota.
-// Config comes from .env (see .env.example) or the environment.
+/*
+ * End-to-end checks against the deployed Function URL, bypassing the site's proxy.
+ * By default it sends no email and uses no rate-limit quota.
+ * --send adds one real submission: it emails the form's recipient and uses 1 of the form's daily per-client quota and 1 of its monthly quota.
+ * Settings come from .env (see .env.example) or the environment.
+ */
 import { readFileSync } from "node:fs";
 
 const url = process.env.CONTACT_URL?.replace(/\/$/, "");
@@ -48,8 +50,10 @@ function submit(fields: Record<string, string>, json: boolean): Promise<Response
 	});
 }
 
-// An empty email can never be sent, so this stays safe even if the dwell time has somehow passed.
-// The stamp is checked before the email, so the expected result is still too_soon.
+/*
+ * The empty email means this can never send, even if the dwell time has somehow passed.
+ * The stamp is checked before the email, so the expected result is still too_soon.
+ */
 const early = await submit({ email: "" }, true);
 const earlyBody = await early.text();
 check(

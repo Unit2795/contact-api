@@ -11,7 +11,7 @@ You don't fork this repo. It holds only code. Each deployment is a small **priva
 | Your sites are served over HTTPS through CloudFront (in any AWS account) or any reverse proxy that can set request headers | Hosts that can't proxy requests on the site's own domain with custom headers, such as GitHub Pages |
 | Each form sends to one recipient | Several recipients per form |
 | A plain-text email with `Reply-To` set to the sender is enough | HTML email, file attachments, or storing submissions (messages are only emailed) |
-| Honeypot fields, a dwell-time cookie and rate limits are enough spam defense | CAPTCHA |
+| Honeypot fields, a cookie that rejects too-fast submissions and rate limits are enough spam defense | CAPTCHA |
 
 - **AWS:** you need an account with a verified SES domain for the sender address, and SES production access (out of the sandbox). Deploys run from GitHub Actions, and a one-time CloudFormation bootstrap creates the state bucket and deploy role. One deployment per AWS account.
 - **Cost:** every resource it creates is billed by use, with no fixed monthly fee, so a low-traffic site costs very little. The Lambda also serves the stamp GIF, so each view of a page with a form is one invocation.
@@ -22,7 +22,7 @@ You don't fork this repo. It holds only code. Each deployment is a small **priva
 Browser ──> site's reverse proxy ──(adds x-contact-site-key and the client IP)──> Lambda Function URL ──> DynamoDB (limits) + SES
 ```
 
-Each site forwards two paths to this API through a reverse proxy on its own domain, such as its CloudFront distribution or nginx, Caddy or Traefik, so the stamp cookie stays first-party:
+Each site's reverse proxy forwards two paths on the site's own domain to this API, so the stamp cookie stays first-party:
 
 | Route | Purpose |
 | --- | --- |
@@ -37,7 +37,7 @@ A submission passes these checks, cheapest first. Nothing touches AWS until the 
 4. **Honeypot:** any honeypot field that isn't blank → fake success, no email.
 5. **Stamp:** the cookie is signed per site. It must be at least `minDwellSec` old and at most `maxDwellSec`.
 6. **Validation:** email, message length, extra fields.
-7. **Rate limits:** per form and client IP per day first, then per form per month. The proxy passes the client IP in `X-Real-IP`, or CloudFront in `CloudFront-Viewer-Address`. Atomic DynamoDB counters that expire automatically. See [Rate limits](docs/config.md#rate-limits).
+7. **Rate limits:** per form and client IP per day first, then per form per month. The proxy passes the client IP in `X-Real-IP`, or CloudFront in `CloudFront-Viewer-Address`. The counters are atomic DynamoDB writes that expire automatically. See [Rate limits](docs/config.md#rate-limits).
 8. **Send:** plain-text email with `Reply-To` set to the submitter.
 
 ## Get started

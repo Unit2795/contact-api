@@ -6,7 +6,7 @@
 
 ## Overview
 
-This guide connects a site to a deployed API: a reverse proxy on the site's own domain, the HTML form and an optional JS enhancement. The proxy can be the site's CloudFront distribution, or nginx, Caddy or Traefik on any host, such as a plain Linux server or Docker outside AWS. Deploy first; see [Deploy](deploy.md). The site and its forms must already be in `forms.json`; see [Adding a site, form or sender domain](config.md#adding-a-site-form-or-sender-domain).
+This guide connects a site to a deployed API: a reverse proxy on the site's own domain, the HTML form and an optional JS enhancement. The proxy can be the site's CloudFront distribution, or nginx, Caddy or Traefik on any host, such as a plain Linux server or Docker outside AWS. [Deploy](deploy.md) the API first. The site and its forms must already be in `forms.json`; see [Adding a site, form or sender domain](config.md#adding-a-site-form-or-sender-domain).
 
 ## How the site connects
 
@@ -70,7 +70,6 @@ Store the key on the server as an environment variable or secret, such as `CONTA
 
 Add one origin and two behaviors to the site's distribution:
 
-- Use exactly these two path patterns rather than `/api/*`, so other `/api` routes on the site are unaffected.
 - Place both behaviors **above** any broader behavior such as `/api/*`. CloudFront uses the first behavior, in list order, whose path pattern matches.
 - The origin is the bare host from `origin_domain`, with no `https://` and no origin path. An origin path changes the path the API sees, so every request would get `404`.
 
@@ -115,7 +114,7 @@ ordered_cache_behavior {
 }
 ```
 
-- `Managed-AllViewerExceptHostHeader` forwards cookies and `CloudFront-Viewer-Address`, which carries the real client IP. It withholds only the viewer's `Host` header, so CloudFront sends the Function URL's own host, which the Function URL needs. `Managed-AllViewer` forwards the viewer's `Host` and can stop the Function URL from working.
+- `Managed-AllViewerExceptHostHeader` forwards cookies and `CloudFront-Viewer-Address`, which carries the client IP. It withholds only the viewer's `Host` header, so the Function URL gets its own host, which it needs. Don't use `Managed-AllViewer`: it forwards the viewer's `Host`, which can stop the Function URL from working.
 - CloudFront overwrites any viewer-sent `x-contact-site-key` with the configured value, so a visitor can't choose the key through your distribution. Anyone who has a key can still call the Function URL directly, so keep the keys secret.
 
 ## nginx
@@ -244,7 +243,7 @@ If another CDN such as Cloudflare sits in front of the server, the proxy's conne
 
 ## HTML form
 
-This works without JavaScript. The form posts to the site's own host, which the site's proxy forwards to the API, so no CORS setup is needed.
+This works without JavaScript. The form posts to the site's own host, which the site's proxy forwards to the API.
 
 ```html
 <!-- Sets the stamp cookie. Include it on the page that has the form. -->
@@ -266,7 +265,7 @@ This works without JavaScript. The form posts to the site's own host, which the 
 - The last part of `action` is the form id from `forms.json`.
 - `minlength` and `maxlength` on the message should match the form's `messageMin` and `messageMax`.
 - Add an input for each of the form's `extraFields`, if it has any.
-- The error page can read `?reason=` to explain what happened, e.g. `too_soon` → "Please wait a few seconds and retry". See [Responses](#responses).
+- The error page can read `?reason=` to explain what happened, such as `too_soon` → "Please wait a few seconds and retry". See [Responses](#responses).
 
 ## JavaScript enhancement
 
@@ -285,7 +284,7 @@ form.addEventListener("submit", async (event) => {
   // A bare 403 or 404 has no JSON body (see Responses).
   const isJson = res.headers.get("content-type")?.includes("application/json");
   const { ok, reason } = isJson ? await res.json() : { ok: false, reason: `http_${res.status}` };
-  // ok → show thanks; otherwise map `reason` to a message
+  // ok → show thanks; otherwise map reason to a message
 });
 ```
 
@@ -299,13 +298,13 @@ Responses depend on the client:
 
 | Reason | Status | Meaning |
 | --- | --- | --- |
-| `stamp_missing` / `stamp_invalid` | 400 | No valid stamp cookie (page didn't load the GIF, or tampering) |
+| `stamp_missing` / `stamp_invalid` | 400 | No valid stamp cookie: the page didn't load the GIF, the cookie expired after `maxDwellSec` (reload), or it was tampered with |
 | `too_soon` | 400 | Submitted faster than `minDwellSec` after page load |
-| `stamp_expired` | 400 | Page open longer than `maxDwellSec`; reload |
+| `stamp_expired` | 400 | Stamp older than `maxDwellSec`. Browsers usually delete the cookie first and get `stamp_missing` instead |
 | `invalid_email` / `invalid_message` / `invalid_field` | 400 | Validation failed |
 | `bad_request` / `too_large` | 400 / 413 | Unparseable or oversized body |
 | `ip_limit` / `form_limit` | 429 | Daily per-client cap for this form, or monthly per-form cap, reached |
-| `server_error` | 500 | AWS failure (see CloudWatch logs) |
+| `server_error` | 500 | Server failure, usually from AWS (see CloudWatch logs) |
 | (no body) | 403 | Missing or wrong site key. No redirect, even for no-JS posts |
 | (no body) | 404 | Unknown form, a form of another site, or a wrong path or method. No redirect, even for no-JS posts |
 

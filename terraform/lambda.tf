@@ -1,4 +1,4 @@
-# Run `pnpm build` first; it produces dist/index.cjs.
+# Run pnpm build first; it produces dist/index.cjs.
 data "archive_file" "lambda" {
   type        = "zip"
   source_file = "${path.module}/../dist/index.cjs"
@@ -70,7 +70,7 @@ resource "aws_lambda_function" "this" {
 }
 
 # Public URL; every request must still carry a valid site key injected by a site's proxy.
-# With auth NONE the provider adds both required public-invoke permission statements itself.
+# With auth NONE, the provider adds both required public-invoke permissions itself, so no aws_lambda_permission is needed.
 resource "aws_lambda_function_url" "this" {
   function_name      = aws_lambda_function.this.function_name
   authorization_type = "NONE"

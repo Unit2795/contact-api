@@ -8,7 +8,7 @@
 
 This guide deploys your own instance of the API. Once it is running, [connect a site](connect.md).
 
-You don't fork this repo. You create a small **private** config repo that holds your `forms.json` and `state.config` and runs this repo's GitHub Action ([`action.yml`](../action.yml)) at a pinned release tag. Your sites, addresses and deploy logs stay private, and a new version only reaches your deployment when you bump the tag.
+You don't fork this repo. You create a small **private** config repo that holds your `forms.json` and `state.config` and runs this repo's GitHub Action ([`action.yml`](../action.yml)) at a pinned release tag. Your sites, addresses and deploy logs stay private.
 
 > 💡 Note: You can run one deployment per AWS account. Resource names are fixed, the IAM role names `contact-api` and `contact-api-deploy` are account-wide, and the smoke test reads SSM parameters under `/contact-api/`.
 
@@ -31,8 +31,8 @@ Every resource is tagged `Project = contact-api`. The state bucket, the GitHub O
 
 - **AWS account.** Everything goes in `us-east-1` unless you set the action's `aws-region` input.
 - **SES:** a verified **domain** identity for your sender address, in the deploy region, ideally with DKIM enabled. See [Creating a domain identity](https://docs.aws.amazon.com/ses/latest/dg/creating-identities.html).
-  - New accounts start in the SES sandbox. [Request production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html) before the first send. In the sandbox, SES also checks the function's permission on each recipient's identity, which this stack doesn't grant, so every send fails with `server_error`.
-- **Lambda concurrency (optional):** AWS always keeps 100 concurrent executions unreserved, so reserving 5 needs an account "Concurrent executions" quota of at least 105. New accounts can start lower. Then the deploy skips the reservation with a warning, and the account quota bounds cost instead. To turn the cap on, request a higher quota in Service Quotas; the next deploy reserves 5.
+  - New accounts start in the SES sandbox. [Request production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html) before the first send. In the sandbox, SES also checks the function's permission on each recipient's identity, which this stack grants only for recipients at a sender domain, so sends to any other address fail with `server_error`.
+- **Lambda concurrency (optional):** AWS always keeps 100 concurrent executions unreserved, so reserving 5 needs an account "Concurrent executions" quota of at least 105. If the quota is lower, as it can be on new accounts, the deploy skips the reservation with a warning, and the account quota bounds cost instead. To turn the cap on, request a higher quota in Service Quotas; the next deploy reserves 5.
 - **Runner:** the action uses `jq` and the AWS CLI. GitHub's `ubuntu-latest` runners have both.
 - **Local tools,** only for [rotating secrets](#rotating-secrets) or [removing a deployment](#removing-a-deployment): Node.js 24 or newer, pnpm (`package.json` pins the version) and Terraform 1.10 or newer.
 
@@ -71,7 +71,7 @@ aws cloudformation describe-stacks --stack-name contact-api-bootstrap --query "S
 | --- | --- | --- |
 | S3 bucket | generated, in `StateConfig` | Terraform state, which holds the generated secrets. Private and versioned. Kept if you delete the stack. |
 | IAM OIDC provider | `token.actions.githubusercontent.com` | Only if the account has none. |
-| IAM role | `contact-api-deploy` | Trusted only by the config repo's `main` branch, in both of GitHub's `sub` formats. It can manage only the resources in [What gets created](#what-gets-created) and read the state bucket. |
+| IAM role | `contact-api-deploy` | Trusted only by the config repo's `main` branch, in both of GitHub's `sub` formats. It can manage only the resources in [What gets created](#what-gets-created) and the state in the state bucket. |
 
 - **Updating:** if a release needs new deploy permissions, its release notes say so. Download that tag's `bootstrap.yml` and run the `aws cloudformation deploy` line again without `--parameter-overrides`, so the stack keeps its first values.
 - **Your own role:** to manage IAM another way, copy the trust policy and permissions from `bootstrap.yml`.
@@ -106,7 +106,7 @@ After the first deploy, send one real message and check it arrives:
 | `aws-region` | `us-east-1` | Region for the Lambda, table, SSM parameters and SES identities. The state bucket's region is set separately in `state.config` |
 
 - The workflow must check out the config repo before the action runs, and grant `id-token: write` when `apply` is `true`.
-- Only the `apply: false` path runs `terraform validate`. The `apply: true` path goes straight to `terraform apply`.
+- Only the `apply: false` path runs `terraform validate`.
 - The smoke test uses the first form in `forms.json`, and that form's site key from SSM.
 
 ## Outputs
@@ -122,7 +122,7 @@ Terraform prints these at the end of the apply step in the deploy log:
 
 - **Pinned tag:** new versions never reach your deployment until you bump the tag.
 - **Dependabot PRs:** Dependabot opens a PR for each new release. PRs run in validate-only mode, so they show whether your config still fits the new version, without touching AWS.
-- **Versioning:** releases follow semver. New config options get defaults, so minor releases never break existing configs. A major release may need config changes, and its release notes say what they are.
+- **Versioning:** releases follow semantic versioning. New config options get defaults, so minor releases never break existing configs. A major release may need config changes, and its release notes say what they are.
 
 ## Rotating secrets
 
@@ -165,7 +165,7 @@ If you deploy outside `us-east-1`, add `-var aws_region=<region>` to the apply.
 | The deploy fails to assume the role (`Not authorized to perform sts:AssumeRoleWithWebIdentity`) | The role's `sub` condition doesn't match the token. Check that the bootstrap's `GitHubRepo` matches the config repo's owner and name exactly, including capitalization; after a rename, run the bootstrap's `aws cloudformation deploy` line again with only `--parameter-overrides GitHubRepo=<owner>/<new-name>`, so `CreateOidcProvider` keeps its first value. If the job uses a GitHub environment, `sub` ends in `environment:<name>` instead of the branch, which the role doesn't trust. |
 | The bootstrap fails, and running it again says the stack is in `ROLLBACK_COMPLETE` | A failed first create leaves the stack unusable. Check its events in the CloudFormation console for the cause, such as an existing `contact-api-deploy` role or OIDC provider, then run `aws cloudformation delete-stack --stack-name contact-api-bootstrap` and run the bootstrap again. |
 | A manual run fails to assume the role, but pushes to `main` work | The run was started from another branch. `sub` then names that branch, and the role only trusts `main`. Start it from `main`. |
-| `terraform apply` fails setting reserved concurrency | Less than 105 unreserved concurrency is left. Either the deploy role can't read the quota (add `lambda:GetAccountSettings` so the deploy skips the reservation), or other functions reserve concurrency too. Request a higher "Concurrent executions" quota in Service Quotas to keep the cap. |
+| `terraform apply` fails setting reserved concurrency | Reserving 5 would leave less than the 100 unreserved executions AWS requires. Either the deploy role can't read the quota (add `lambda:GetAccountSettings` so the deploy skips the reservation), or other functions reserve concurrency too. Request a higher "Concurrent executions" quota in Service Quotas to keep the cap. |
 | The validate step fails with `forms.json is invalid:` | Each `✖` line names a problem, and the `→ at` line under it says where, such as `forms["blog-contact"].to`. See the [validation rules](config.md#validation-rules). |
 | Terraform fails reading an SES email identity | A sender domain isn't an SES identity in the deploy region. Create and verify it first. |
 | Submissions return `server_error` | Check the log group `/aws/lambda/contact-api`; the AWS error is logged just before the `server_error` line. It is usually SES. An error saying the function is not authorized to perform `ses:SendEmail` on the recipient's identity means the account is still in the SES sandbox; request production access. |

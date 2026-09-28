@@ -57,7 +57,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-              # Only the config repo's main branch, in both of GitHub's formats. Newer repos add the owner and repo ids.
+              # Only the config repo's main branch, in both formats GitHub uses for sub. Some repos, including all created since July 15, 2026, add the owner and repo ids.
               StringLike:
                 token.actions.githubusercontent.com:sub:
                   - !Sub repo:${GitHubRepo}:ref:refs/heads/main
@@ -74,7 +74,7 @@ Resources:
                 Effect: Allow
                 Action: [s3:ListBucket, s3:GetObject, s3:PutObject, s3:DeleteObject]
                 Resource: [!GetAtt StateBucket.Arn, !Sub "${StateBucket.Arn}/*"]
-              # Full control, but only of the resources Terraform creates. Their names are fixed in terraform/main.tf.
+              # Full control, but only of the resources Terraform creates. Their names come from local.name in terraform/main.tf; change both together.
               - Sid: StackResources
                 Effect: Allow
                 Action: [lambda:*, dynamodb:*, ssm:*, logs:*, iam:*]
@@ -86,8 +86,8 @@ Resources:
                   - !Sub arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:/aws/lambda/contact-api
                   - !Sub arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:/aws/lambda/contact-api:*
                   - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/contact-api
-              # Reads that AWS doesn't scope to one resource. The action checks the concurrency quota; Terraform looks
-              # up parameters, log groups and the sender identities.
+              # Read-only lookups on all resources: some of these actions can't be scoped, and the other ARNs aren't known here.
+              # action.yml reads the concurrency quota. Terraform looks up parameters, log groups, the sender identities and the aws/ssm key.
               - Sid: Reads
                 Effect: Allow
                 Action:
