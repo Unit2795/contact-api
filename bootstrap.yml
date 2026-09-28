@@ -1,0 +1,119 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  One-time AWS setup for contact-api: a Terraform state bucket, the GitHub OIDC provider (optional) and the deploy
+  role that the config repo's main branch assumes. See docs/deploy.md.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Description: The private config repo as owner/repo, with the same capitalization as on GitHub.
+    AllowedPattern: "[A-Za-z0-9-]+/[A-Za-z0-9._-]+"
+  CreateOidcProvider:
+    Type: String
+    Description: '"false" if the account already has the token.actions.githubusercontent.com identity provider. An account can have only one.'
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+Conditions:
+  CreateOidc: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  # Holds Terraform state, which includes the generated secrets. Kept when the stack is deleted.
+  StateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateOidc
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: [6938fd4d98bab03faadb97b34396831e3780aea1, 1c58a3a8518e8759bf075b76b750d4f2df264fcd]
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: contact-api-deploy
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateOidc
+                - !Ref GitHubOidcProvider
+                - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              # Only the config repo's main branch, in both of GitHub's formats. Newer repos add the owner and repo ids.
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubRepo}:ref:refs/heads/main
+                  - !Sub
+                    - repo:${Owner}@*/${Repo}@*:ref:refs/heads/main
+                    - Owner: !Select [0, !Split ["/", !Ref GitHubRepo]]
+                      Repo: !Select [1, !Split ["/", !Ref GitHubRepo]]
+      Policies:
+        - PolicyName: deploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: State
+                Effect: Allow
+                Action: [s3:ListBucket, s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: [!GetAtt StateBucket.Arn, !Sub "${StateBucket.Arn}/*"]
+              # Full control, but only of the resources Terraform creates. Their names are fixed in terraform/main.tf.
+              - Sid: StackResources
+                Effect: Allow
+                Action: [lambda:*, dynamodb:*, ssm:*, logs:*, iam:*]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:function:contact-api
+                  - !Sub arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:function:contact-api:*
+                  - !Sub arn:${AWS::Partition}:dynamodb:*:${AWS::AccountId}:table/contact-api-limits
+                  - !Sub arn:${AWS::Partition}:ssm:*:${AWS::AccountId}:parameter/contact-api/*
+                  - !Sub arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:/aws/lambda/contact-api
+                  - !Sub arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:/aws/lambda/contact-api:*
+                  - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/contact-api
+              # Reads that AWS doesn't scope to one resource. The action checks the concurrency quota; Terraform looks
+              # up parameters, log groups and the sender identities.
+              - Sid: Reads
+                Effect: Allow
+                Action:
+                  - lambda:GetAccountSettings
+                  - ssm:DescribeParameters
+                  - logs:DescribeLogGroups
+                  - ses:GetEmailIdentity
+                  - ses:ListTagsForResource
+                  - kms:DescribeKey
+                Resource: "*"
+              # Site keys are SecureStrings under the default aws/ssm key.
+              - Sid: SecureStrings
+                Effect: Allow
+                Action: [kms:Encrypt, kms:Decrypt, kms:GenerateDataKey]
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    kms:ViaService: ssm.*.amazonaws.com
+
+Outputs:
+  RoleArn:
+    Description: Add this as the config repo's AWS_ROLE_ARN secret.
+    Value: !GetAtt DeployRole.Arn
+  StateConfig:
+    Description: The config repo's state.config.
+    Value: !Sub |
+      bucket = "${StateBucket}"
+      key    = "contact-api/terraform.tfstate"
+      region = "${AWS::Region}"

@@ -1,10 +1,10 @@
 # Contact API AI Guide
 
-Centralized contact-form API: one Lambda (Function URL) + DynamoDB rate limits + SES, reached through each site's CloudFront. Docs:
+Centralized contact-form API: one Lambda (Function URL) + DynamoDB rate limits + SES, reached through a reverse proxy on each site's own domain (CloudFront, nginx, Caddy, Traefik or similar). Docs:
 
 - `README.md`: what it is, the design and request checks, development, e2e testing and releasing.
-- `docs/deploy.md`: the config-repo deployment model, prerequisites, action inputs, secret rotation, removal and troubleshooting.
-- `docs/connect.md`: CloudFront wiring, the HTML form, the JS enhancement and reason codes.
+- `docs/deploy.md`: the config-repo deployment model, prerequisites, the bootstrap (`bootstrap.yml`), action inputs, secret rotation, removal and troubleshooting.
+- `docs/connect.md`: the proxy rules every site must meet, CloudFront, nginx, Caddy and Traefik setup, the HTML form, the JS enhancement and reason codes.
 - `docs/config.md`: the `forms.json` fields, validation rules and rate-limit behavior.
 
 This repo is public and holds code only. Deployments run from private config repos that pin a release tag of the composite action in `action.yml`. Never commit real config, secrets, Function URLs or `.env`. `forms.json` and `terraform/state.config` are gitignored local copies; the committed templates are `forms.example.json` and `terraform/state.config.example`.
@@ -19,7 +19,8 @@ A config repo may sit in a sibling directory; you can recognize it by a deploy w
 
 ## Changes
 
-- A config format change must update `forms.example.json` in the same change. CI validates the action against it.
+- A config format change must update `forms.example.json` in the same change. CI validates the action against it. The template repo (`../contact-api-template`, whose `forms.json` is a copy of it) needs the same change after the release.
 - New config options get a code default in the schema in `src/config.ts`, so existing configs keep working. Anything that would make an existing config invalid is a breaking change: it needs a major version bump and migration notes.
-- Renaming or restructuring a Terraform resource is a breaking change unless a `moved` block keeps the old address. Without one, Terraform destroys and recreates it. For `random_password.site_key`, that gives every site a new key and breaks its CDN until the site redeploys.
+- A change that needs new deploy permissions must update the deploy role in `bootstrap.yml` in the same change, and its release notes must say to run the bootstrap again.
+- Renaming or restructuring a Terraform resource is a breaking change unless a `moved` block keeps the old address. Without one, Terraform destroys and recreates it. For `random_password.site_key`, that gives every site a new key and breaks its forms until the site's proxy gets the new key.
 - Never deploy from here, and never run `terraform apply` locally. The rotation and removal steps in `docs/deploy.md` are for the maintainer to run.

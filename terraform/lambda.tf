@@ -69,7 +69,7 @@ resource "aws_lambda_function" "this" {
   depends_on = [aws_cloudwatch_log_group.lambda]
 }
 
-# Public URL; every request must still carry a valid site key injected by a site's CDN.
+# Public URL; every request must still carry a valid site key injected by a site's proxy.
 # With auth NONE the provider adds both required public-invoke permission statements itself.
 resource "aws_lambda_function_url" "this" {
   function_name      = aws_lambda_function.this.function_name

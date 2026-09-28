@@ -6,14 +6,14 @@ resource "random_password" "hmac_secret" {
   special = false
 }
 
-# One key per site. The site's CDN injects it as the x-contact-site-key origin header.
+# One key per site. The site's proxy injects it as the x-contact-site-key header.
 resource "random_password" "site_key" {
   for_each = local.sites
   length   = 48
   special  = false
 }
 
-# Published for each consuming site's Terraform to read when configuring its CDN origin.
+# Published for each site's proxy config to read (or copy) its key.
 resource "aws_ssm_parameter" "site_key" {
   for_each = local.sites
   name     = "/${local.name}/sites/${each.key}/origin-key"

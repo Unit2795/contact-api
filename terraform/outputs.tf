@@ -1,5 +1,5 @@
 output "origin_domain" {
-  description = "Function URL host to use as each site's CDN origin."
+  description = "Function URL host that each site's reverse proxy forwards to."
   value       = local.origin_domain
 }
 

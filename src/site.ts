@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
-// Each site's CDN injects its own secret in this header (CloudFront overwrites any viewer-sent value).
-// It identifies the site and rejects anything that didn't come through a configured CDN.
+// Each site's proxy injects its own secret in this header, overwriting any viewer-sent value.
+// It identifies the site and rejects anything that didn't come through a configured proxy.
 export const SITE_HEADER = "x-contact-site-key";
 
 export function resolveSite(key: string | undefined, siteKeys: Record<string, string>): string | null {

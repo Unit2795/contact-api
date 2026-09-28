@@ -73,6 +73,14 @@ runs:
       env:
         TF_VAR_aws_region: ${{ inputs.aws-region }}
       run: |
+        # Reserving 5 concurrent executions needs an account limit of at least 105, because AWS keeps 100 unreserved.
+        # New accounts often start lower. Then deploy without the cap, and the account limit bounds cost instead.
+        # If the role can't read the limit, keep the cap.
+        limit="$(aws lambda get-account-settings --query AccountLimit.ConcurrentExecutions --output text 2>/dev/null || true)"
+        if [ -n "$limit" ] && [ "$limit" -lt 105 ]; then
+          echo "::warning::The account's Lambda concurrency limit is $limit, below the 105 needed to reserve 5. Deploying without reserved concurrency. Ask AWS to raise the 'Concurrent executions' quota to turn the cap on."
+          export TF_VAR_reserved_concurrency=-1
+        fi
         terraform init -input=false -backend-config=state.config
         terraform apply -auto-approve -input=false -lock-timeout=5m
 

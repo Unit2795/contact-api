@@ -163,7 +163,10 @@ describe("POST /api/contact/:form", () => {
 		expect(res.headers?.Location).toBe("/oops?reason=server_error");
 	});
 
-	it("takes the viewer IP from CloudFront, including IPv6, falling back to sourceIp", async () => {
+	it("takes the viewer IP from X-Real-IP, then CloudFront, including IPv6, falling back to sourceIp", async () => {
+		await handler(request({ headers: { "x-real-ip": "198.51.100.9" } }));
+		expect(consumeIpDaily).toHaveBeenLastCalledWith(form, "198.51.100.9");
+
 		await handler(request({ headers: { "cloudfront-viewer-address": "2001:db8::1:443" } }));
 		expect(consumeIpDaily).toHaveBeenLastCalledWith(form, "2001:db8::1");
 

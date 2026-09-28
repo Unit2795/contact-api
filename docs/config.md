@@ -59,7 +59,7 @@ forms.json is invalid:
 
 ## Adding a site, form or sender domain
 
-- **Form:** add it under `forms`, open a PR in the config repo, and merge it to deploy. A form on an existing site needs no CloudFront change; the site's HTML just posts to the new form id.
+- **Form:** add it under `forms`, open a PR in the config repo, and merge it to deploy. A form on an existing site needs no proxy change; the site's HTML just posts to the new form id.
 - **Site:** add its id to `sites` and add its forms, then deploy. The deploy creates the site's key. Then [connect the site](connect.md). Renaming a site id removes the old key and creates a new one.
 - **Sender domain:** verify the domain in SES, in the deploy region, before you use it in `from`. Terraform looks up every sender domain, and the deploy fails if one isn't an SES identity.
 
@@ -73,7 +73,7 @@ Two counters are checked, in this order, after every other check has passed:
 | Monthly | `monthlyCap` | Form and UTC calendar month, across all clients |
 
 - **Client:** the IPv4 address. IPv6 addresses are grouped by their /64 prefix, because one device often controls a whole /64. IPv4-mapped IPv6 addresses written like `::ffff:192.0.2.1` count as the IPv4 address.
-- **Client IP source:** the `CloudFront-Viewer-Address` header. Without it, the API uses the address that called the Function URL.
+- **Client IP source:** the `X-Real-IP` header, which the site's proxy sets. Without it, the `CloudFront-Viewer-Address` header, which CloudFront adds. Without either, the address that called the Function URL. See [How the site connects](connect.md#how-the-site-connects).
 - **No refunds:** a counter is used before the email is sent, and is not given back if sending fails. A submission rejected by the monthly cap has already used 1 of the daily count.
 - **What counts:** only submissions that pass every other check. Honeypot hits and submissions rejected before the rate limits don't use quota.
 - **Resets:** counter keys include the UTC day or month, so a new day or month starts from 0. DynamoDB TTL removes old counters later.

@@ -79,8 +79,11 @@ async function contact(event: Event, form: FormConfig): Promise<Result> {
 	return success(form, json);
 }
 
-// Behind CloudFront, sourceIp is the edge; the real client is in CloudFront-Viewer-Address as `ip:port`.
+// Behind a proxy, sourceIp is the proxy. Non-CloudFront proxies are set up to overwrite X-Real-IP with the client IP;
+// CloudFront strips a viewer-sent X-Real-IP and sends CloudFront-Viewer-Address as `ip:port` instead.
 function viewerIp(event: Event): string {
+	const realIp = event.headers["x-real-ip"];
+	if (realIp) return realIp;
 	const viewer = event.headers["cloudfront-viewer-address"];
 	return viewer ? viewer.slice(0, viewer.lastIndexOf(":")) : event.requestContext.http.sourceIp;
 }
