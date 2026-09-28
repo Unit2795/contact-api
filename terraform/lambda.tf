@@ -6,7 +6,7 @@ data "archive_file" "lambda" {
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
-  name              = "/aws/lambda/${var.name}"
+  name              = "/aws/lambda/${local.name}"
   retention_in_days = 14
 }
 
@@ -21,7 +21,7 @@ data "aws_iam_policy_document" "assume" {
 }
 
 resource "aws_iam_role" "lambda" {
-  name               = var.name
+  name               = local.name
   assume_role_policy = data.aws_iam_policy_document.assume.json
 }
 
@@ -46,7 +46,7 @@ resource "aws_iam_role_policy" "lambda" {
 }
 
 resource "aws_lambda_function" "this" {
-  function_name    = var.name
+  function_name    = local.name
   role             = aws_iam_role.lambda.arn
   runtime          = "nodejs24.x"
   architectures    = ["arm64"]

@@ -26,7 +26,7 @@ provider "aws" {
   region = var.aws_region
 
   default_tags {
-    tags = { Project = var.name }
+    tags = { Project = local.name }
   }
 }
 
@@ -34,6 +34,8 @@ data "aws_caller_identity" "current" {}
 
 # forms.json is the single source of truth: bundled into the Lambda and read here for sites and senders.
 locals {
+  # Resource names and the SSM path prefix. The smoke test and docs assume this value.
+  name         = "contact-api"
   forms_config = jsondecode(file("${path.module}/../forms.json"))
   sites        = toset(local.forms_config.sites)
   sender_domains = toset([

@@ -4,13 +4,7 @@
 		"maxDwellSec": 86400
 	},
 	"defaults": {
-		"from": "forms@example.com",
-		"honeypots": [],
-		"extraFields": [],
-		"messageMin": 12,
-		"messageMax": 2000,
-		"monthlyCap": 50,
-		"ipDailyCap": 3
+		"from": "forms@example.com"
 	},
 	"sites": ["portfolio", "blog"],
 	"forms": {

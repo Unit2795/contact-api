@@ -1,6 +1,6 @@
 # Rate-limit counters. Keys embed the UTC day/month; TTL on expiresAt cleans up old counters.
 resource "aws_dynamodb_table" "limits" {
-  name         = "${var.name}-limits"
+  name         = "${local.name}-limits"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "pk"
 

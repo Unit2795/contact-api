@@ -1,8 +1,20 @@
 # contact-api
 
-One centralized, hardened contact-form backend for all my sites. Every form posts to the same Lambda; each form emails a single recipient via SES. Works with plain HTML forms (no JS), and optionally enhanced with JS.
+A self-hosted contact-form backend for sites served through AWS CloudFront. Every form posts to one Lambda function through the site's own CloudFront distribution, and each form emails a single recipient through Amazon SES. Forms work as plain HTML with no JavaScript, and can be enhanced with JS.
 
-It is built for personal use and costs pennies a month. This repo holds only the code. Each deployment lives in its own private config repo, which runs this repo's GitHub Action at a pinned release; see [Deploy your own](#deploy-your-own).
+You don't fork this repo. It holds only code. Each deployment is a small **private config repo** that holds your `forms.json` and `state.config` and runs this repo's GitHub Action at a pinned release tag, so your sites, addresses and deploy logs stay private.
+
+## Is it for you?
+
+| ✅ It fits if | ❌ It doesn't do |
+| --- | --- |
+| Your sites are served through CloudFront, in any AWS account | Sites behind another CDN (the real client IP comes from a CloudFront header) |
+| Each form sends to one recipient | Several recipients per form |
+| A plain-text email with `Reply-To` set to the sender is enough | HTML email, file attachments, or storing submissions (messages are only emailed) |
+| Honeypot fields, a dwell-time cookie and rate limits are enough spam defense | CAPTCHA |
+
+- **AWS:** you need an account with a verified SES domain for the sender address, and SES production access (out of the sandbox). Deploys run from GitHub Actions. One deployment per AWS account.
+- **Cost:** every resource it creates is billed by use, with no fixed monthly fee, so a low-traffic site costs very little. The Lambda also serves the stamp GIF, so each view of a page with a form is one invocation.
 
 ## How it works
 
@@ -10,7 +22,7 @@ It is built for personal use and costs pennies a month. This repo holds only the
 Browser ──> site's CloudFront ──(adds x-contact-site-key)──> Lambda Function URL ──> DynamoDB (limits) + SES
 ```
 
-Each site proxies two paths to this API through its own CDN, so the stamp cookie stays first-party:
+Each site forwards two paths to this API through its own CloudFront distribution, so the stamp cookie stays first-party:
 
 | Route | Purpose |
 | --- | --- |
@@ -19,280 +31,24 @@ Each site proxies two paths to this API through its own CDN, so the stamp cookie
 
 A submission passes these checks, cheapest first. Nothing touches AWS until the submission is valid:
 
-1. **Site key**: header injected by the site's CDN. Missing or wrong → `403`. Blocks direct hits on the Function URL.
-2. **Form ownership**: the form must belong to that site, else `404`.
-3. **Size / parse**: body ≤ 32 KB, urlencoded or flat JSON.
-4. **Honeypot**: any non-empty honeypot field → fake success, no email.
-5. **Stamp**: cookie signed per site. Must be at least `minDwellSec` old and at most `maxDwellSec`.
-6. **Validation**: email, message length, extra fields.
-7. **Rate limits**: per-IP per day first, then per-form per month. Atomic DynamoDB counters that expire automatically.
-8. **Send**: plain text email with `Reply-To` set to the submitter.
+1. **Site key:** a header injected by the site's CloudFront. Missing or wrong → `403`, so requests straight to the Function URL without a key are rejected.
+2. **Form ownership:** the form must belong to that site, else `404`.
+3. **Size / parse:** body ≤ 32 KB, urlencoded or flat JSON.
+4. **Honeypot:** any honeypot field that isn't blank → fake success, no email.
+5. **Stamp:** the cookie is signed per site. It must be at least `minDwellSec` old and at most `maxDwellSec`.
+6. **Validation:** email, message length, extra fields.
+7. **Rate limits:** per form and client per day first, then per form per month. Atomic DynamoDB counters that expire automatically. See [Rate limits](docs/config.md#rate-limits).
+8. **Send:** plain-text email with `Reply-To` set to the submitter.
 
-Responses depend on the client:
+## Get started
 
-- **No-JS posts** get a `303` to `successUrl`, or to `errorUrl?reason=<code>`.
-- **Requests with `Accept: application/json`** get `{ ok: true }` or `{ ok: false, reason }` with a matching status.
+1. [Deploy](docs/deploy.md): set up AWS and a private config repo that runs this repo's action.
+2. [Connect a site](docs/connect.md): add the CloudFront behaviors and the HTML form.
+3. [Configure forms](docs/config.md): `forms.json` fields, validation rules and rate limits.
 
-| Reason | Status | Meaning |
-| --- | --- | --- |
-| `stamp_missing` / `stamp_invalid` | 400 | No valid stamp cookie (page didn't load the GIF, or tampering) |
-| `too_soon` | 400 | Submitted faster than `minDwellSec` after page load |
-| `stamp_expired` | 400 | Page open longer than `maxDwellSec`; reload |
-| `invalid_email` / `invalid_message` / `invalid_field` | 400 | Validation failed |
-| `bad_request` / `too_large` | 400 / 413 | Unparseable or oversized body |
-| `ip_limit` / `form_limit` | 429 | Daily per-IP or monthly per-form cap reached |
-| `server_error` | 500 | AWS failure (see CloudWatch logs) |
+## Development
 
-## Adding a form
-
-Forms live in `forms.json` in your config repo; start from [`forms.example.json`](forms.example.json). The file is bundled into the Lambda and read by Terraform, and the deploy action validates it before touching AWS.
-
-- **`stamp`**: global dwell window in seconds. One stamp cookie covers every form on a site.
-- **`sites`**: site ids. Each gets its own generated origin key.
-- **`defaults`**: applied to every form unless the form overrides them.
-- **`forms`**: keyed by form id, which appears in the URL.
-
-| Form field | Required | Notes |
-| --- | --- | --- |
-| `site` | ✅ | Must be listed in `sites` |
-| `to` | ✅ | Single recipient address |
-| `subject` | ✅ | Email subject |
-| `successUrl` / `errorUrl` | ✅ | A root-relative path like `/thanks`, which resolves on the site's own domain, or a full `https://` URL |
-| `honeypots` | ✅ | Hidden field names that must stay empty; at least one |
-| `from` |  | Sender; its domain must be a verified SES identity |
-| `extraFields` |  | Optional extra fields to include in the email, max 200 chars each |
-| `messageMin` / `messageMax` |  | Message length bounds |
-| `monthlyCap` / `ipDailyCap` |  | Rate limits |
-
-`email` and `message` are always the field names for the submitter's address and message.
-
-Rules the deploy action checks:
-
-- Site and form ids use only lowercase letters, digits and hyphens (`a-z0-9-`). Form ids appear in the URL.
-- `defaults` must set every optional field in the table above. A form can then override any of them.
-- A form may only use the keys in the table above. A misspelled key, like `ipDailycap`, fails validation instead of being silently ignored.
-
-A new **site** also needs a deploy, which creates its key, then the CDN wiring below. A new **sender domain** must already be verified in SES.
-
-## Connecting a site
-
-### 1. CDN (CloudFront, in the site's Terraform)
-
-The site needs two values from this API's deployment:
-
-| Value | Where to find it |
-| --- | --- |
-| Origin domain | Terraform output `origin_domain`, or SSM `/contact-api/origin-domain` |
-| Site key (secret) | SSM SecureString `/contact-api/sites/<site>/origin-key` |
-
-Pass them into the site's Terraform as variables. The site can then live in any AWS account; for example, store the key as a CI secret exposed as `TF_VAR_contact_api_site_key`. If the site is in the same account, it can read them with `aws_ssm_parameter` data sources instead.
-
-Use exactly these two path patterns rather than `api/*`, so other `/api` routes on the site are unaffected.
-
-```hcl
-variable "contact_api_origin_domain" { type = string }
-variable "contact_api_site_key" {
-  type      = string
-  sensitive = true
-}
-
-data "aws_cloudfront_cache_policy" "disabled" { name = "Managed-CachingDisabled" }
-data "aws_cloudfront_origin_request_policy" "all_viewer" { name = "Managed-AllViewerExceptHostHeader" }
-
-# Inside the aws_cloudfront_distribution:
-origin {
-  origin_id   = "contact-api"
-  domain_name = var.contact_api_origin_domain
-  custom_origin_config {
-    http_port              = 80
-    https_port             = 443
-    origin_protocol_policy = "https-only"
-    origin_ssl_protocols   = ["TLSv1.2"]
-  }
-  custom_header {
-    name  = "x-contact-site-key"
-    value = var.contact_api_site_key
-  }
-}
-
-ordered_cache_behavior {
-  path_pattern             = "/api/contact/*"
-  target_origin_id         = "contact-api"
-  viewer_protocol_policy   = "https-only"
-  allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-  cached_methods           = ["GET", "HEAD"]
-  cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
-  origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
-}
-
-ordered_cache_behavior {
-  path_pattern             = "/api/stamp.gif"
-  target_origin_id         = "contact-api"
-  viewer_protocol_policy   = "https-only"
-  allowed_methods          = ["GET", "HEAD"]
-  cached_methods           = ["GET", "HEAD"]
-  cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
-  origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
-}
-```
-
-- `Managed-AllViewerExceptHostHeader` forwards cookies and `CloudFront-Viewer-Address`, which carries the real client IP for rate limiting. It also drops `Host`, which Function URLs require.
-- CloudFront overwrites any viewer-sent `x-contact-site-key`, so the key can't be spoofed.
-
-### 2. HTML (works without JS)
-
-```html
-<!-- Sets the stamp cookie. Include it on the page that has the form. -->
-<img src="/api/stamp.gif" alt="" width="1" height="1" style="position:absolute">
-
-<form method="post" action="/api/contact/portfolio-contact">
-  <input type="email" name="email" required maxlength="254">
-  <textarea name="message" required minlength="12" maxlength="2000"></textarea>
-
-  <!-- Honeypots: names must match the form's "honeypots"; hidden from people and assistive tech -->
-  <div inert aria-hidden="true" style="position:absolute;left:-9999px">
-    <input name="phone" tabindex="-1" autocomplete="off">
-  </div>
-
-  <button type="submit">Send</button>
-</form>
-```
-
-The error page can read `?reason=` to explain what happened, e.g. `too_soon` → "Please wait a few seconds and retry".
-
-### 3. Optional JS enhancement
-
-Post the same fields urlencoded and ask for JSON. The server runs every check the same way, honeypots included:
-
-```js
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const res = await fetch(form.action, {
-    method: "POST",
-    headers: { Accept: "application/json" },
-    body: new URLSearchParams(new FormData(form)),
-  });
-  const { ok, reason } = await res.json().catch(() => ({ ok: false, reason: "server_error" }));
-  // ok → show thanks; otherwise map `reason` to a message
-});
-```
-
-## Deploying
-
-This repo never deploys itself. Its CI runs the deploy action against the example config, in validate-only mode.
-
-Deployments run from a private config repo, through the composite action in [`action.yml`](action.yml):
-
-| `apply` | What runs | AWS access |
-| --- | --- | --- |
-| `false` (PRs) | Copies in the config, then tests including `forms.json` checks, typecheck, build, `terraform validate` | None |
-| `true` (`main`) | The same checks, then `terraform apply`, then `pnpm e2e` as a smoke test (no email) | OIDC role |
-
-Terraform state lives wherever the config repo's `state.config` says. It holds the generated secrets, so keep the bucket private. The deploy role needs:
-
-| Service | Access |
-| --- | --- |
-| S3 | The state bucket: list, plus get/put/delete on the state key's prefix (includes the `.tflock` lockfile) |
-| Lambda | Manage function `contact-api`, its URL, concurrency and permissions |
-| IAM | Manage role `contact-api` and its inline policy; `iam:PassRole` on it |
-| DynamoDB | Manage table `contact-api-limits`, including TTL and tags |
-| SSM | Manage parameters under `/contact-api/*` |
-| CloudWatch Logs | Manage log group `/aws/lambda/contact-api` |
-| SES | `ses:GetEmailIdentity` on the sender domains |
-| STS | `sts:GetCallerIdentity` |
-
-## Deploy your own
-
-You don't fork this repo. You create a small **private** config repo that runs this repo's action, so your sites, addresses and deploy logs stay private.
-
-### Prerequisites
-
-Everything is in `us-east-1` unless you pass the action's `aws-region` input.
-
-- **SES:** a verified **domain** identity for your sender address, in the same region, ideally with DKIM enabled. See [Creating a domain identity](https://docs.aws.amazon.com/ses/latest/dg/creating-identities.html).
-  - New accounts start in the SES sandbox, where every recipient must also be verified. Either verify each form's `to` address, or request production access.
-- **State bucket:** a private S3 bucket for Terraform state. Enabling versioning is recommended.
-- **GitHub OIDC provider:** the account needs the `token.actions.githubusercontent.com` identity provider, with audience `sts.amazonaws.com`. See [Configuring OpenID Connect in AWS](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services).
-- **Deploy role:** an IAM role with the permissions in the table above, trusted only by your **config repo's** `main` branch. Set the `token.actions.githubusercontent.com:sub` condition to:
-  - `repo:<owner>@<owner-id>/<config-repo>@<repo-id>:ref:refs/heads/main`, the format GitHub issues for new repositories. Get the two ids with `gh api repos/<owner>/<config-repo> --jq '.owner.id, .id'`.
-  - `repo:<owner>/<config-repo>:ref:refs/heads/main` for older repositories. If the role can't be assumed, try the other format.
-- **Lambda concurrency:** the function reserves 5 concurrent executions. AWS only allows that while at least 100 stay unreserved in the account, and new accounts can start with a quota of 10. If the first deploy fails with a concurrency error, request a higher "Concurrent executions" quota in Service Quotas.
-
-### Config repo
-
-```
-forms.json                    # from forms.example.json
-state.config                  # from terraform/state.config.example
-.github/workflows/deploy.yml
-.github/dependabot.yml
-```
-
-`.github/workflows/deploy.yml`:
-
-```yaml
-name: Deploy
-# PR checks get their own group; a queued PR run would otherwise cancel a queued deploy.
-concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('validate-{0}', github.ref) || 'deploy' }}
-  cancel-in-progress: false
-on:
-  push: { branches: ["main"] }
-  pull_request:
-  workflow_dispatch:
-permissions:
-  id-token: write
-  contents: read
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: Unit2795/contact-api@vX.Y.Z # the latest release tag
-        with:
-          apply: ${{ github.event_name != 'pull_request' }}
-          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
-```
-
-`.github/dependabot.yml`:
-
-```yaml
-version: 2
-updates:
-  - package-ecosystem: github-actions
-    directory: /
-    schedule: { interval: weekly }
-```
-
-Then add the `AWS_ROLE_ARN` secret and push to `main`. Finally, wire each site's CDN as described in [Connecting a site](#connecting-a-site).
-
-### Staying in sync
-
-- **Pinned tag:** new versions never reach your deployment until you bump the tag.
-- **Dependabot PRs:** Dependabot opens a PR for each new release. PRs run in validate-only mode, so they show whether your config still fits the new version, without touching AWS.
-- **Versioning:** releases follow semver. New config options get defaults, so minor releases never break existing configs. A major release may need config changes, and its release notes say what they are.
-
-### Rotating secrets
-
-Terraform generates every secret, so rotating one means asking Terraform to replace it. Run this from a local clone of this repo, with your `forms.json` copied in, your `state.config` copied to `terraform/`, and AWS credentials that can deploy:
-
-```sh
-pnpm install && pnpm build
-cd terraform
-terraform init -backend-config=state.config
-terraform apply -replace='random_password.site_key["<site>"]'   # or random_password.hmac_secret
-```
-
-- **Site key:** the old key stops working once the apply finishes. Update the site's CDN with the new value from SSM, then redeploy the site.
-- **HMAC secret:** existing stamp cookies become invalid, so visitors who already have a form open must reload the page before submitting.
-
-## Releasing (maintainer)
-
-1. Merge to `main` with CI green. Any config format change must update `forms.example.json` in the same PR; CI validates it.
-2. Set `version` in `package.json` to the new version, then tag `vX.Y.Z` on that commit and publish a GitHub release. Bump the major version when an existing config would stop validating, and put the migration steps in the release notes.
-
-## Local development
-
-Requires Node 24 or newer and pnpm; `package.json` pins the pnpm version. `forms.json` is gitignored here. Copy `forms.example.json` to it, or copy in a real config to test against.
+Requires Node.js 24 or newer and pnpm; `package.json` pins the pnpm version. `forms.json` is gitignored here. Copy `forms.example.json` to it, or copy in a real config to test against.
 
 ```sh
 cp forms.example.json forms.json
@@ -302,13 +58,22 @@ pnpm typecheck
 pnpm build       # dist/index.cjs; Terraform zips it
 ```
 
-## Testing the deployed API
+## Testing a deployed API
 
-`pnpm e2e` calls the Function URL directly, bypassing CloudFront. It reads `CONTACT_URL` and `CONTACT_SITE_KEY` from a gitignored `.env`; copy `.env.example`, which says where to find each value in SSM. The local `forms.json` must match the deployment being tested, since the script reads form settings from it.
+`pnpm e2e` calls the Function URL directly, bypassing CloudFront. It reads `CONTACT_URL` and `CONTACT_SITE_KEY`, plus an optional `CONTACT_FORM`, from the environment or from a gitignored `.env`. Copy `.env.example`, which says where to find each value in SSM. The local `forms.json` must match the deployment being tested, since the script reads form settings from it.
 
 | Command | Checks | Side effects |
 | --- | --- | --- |
 | `pnpm e2e` | 403 without a key; stamp cookie; `too_soon`; honeypot gives a fake success redirect | None |
-| `pnpm e2e --send` | The above, then waits out the dwell time and does a real submit | One email; uses 1 of today's per-IP quota |
+| `pnpm e2e --send` | The above, then waits out `minDwellSec` and does a real submission | One email; uses 1 of the form's daily per-client quota and 1 of its monthly quota |
 
-These checks can't cover the CloudFront path: real viewer IP, and the site key being overwritten. Verify those through a connected site.
+These checks can't cover the CloudFront path: the real viewer IP, and CloudFront overwriting the site key header. Verify those through a connected site; see [Verify through the site](docs/connect.md#verify-through-the-site).
+
+## Releasing (maintainer)
+
+1. Merge to `main` with CI green. Any config format change must update `forms.example.json` in the same PR; CI validates it.
+2. Set `version` in `package.json` to the new version, then tag `vX.Y.Z` on that commit and publish a GitHub release. Bump the major version when an existing config would stop validating, and put the migration steps in the release notes.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

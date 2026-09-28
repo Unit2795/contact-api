@@ -32,14 +32,11 @@ runs:
         cp "$config/forms.json" "$GITHUB_ACTION_PATH/forms.json"
         cp "$config/state.config" "$GITHUB_ACTION_PATH/terraform/state.config"
 
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@v6
       with:
         node-version: 24
-        # Automatic caching needs pnpm on PATH, which is only installed in the next step.
-        package-manager-cache: false
 
     # Config drift against this version fails here, before anything touches AWS.
-    # Tests run before typecheck because their forms.json failures are far easier to read than type errors.
     - name: Validate and build
       shell: bash
       working-directory: ${{ github.action_path }}

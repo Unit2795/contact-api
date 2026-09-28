@@ -3,6 +3,10 @@ dist/
 coverage/
 .terraform/
 *.tfstate*
+*.tfplan
+crash.log
 .env
+.env.*
+!.env.example
 forms.json
 terraform/state.config

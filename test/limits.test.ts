@@ -28,7 +28,7 @@ describe("limits", () => {
 	it.each([
 		["2001:db8:aaaa:bbbb:1:2:3:4", "2001:db8:aaaa:bbbb::/64"],
 		["2001:DB8:AAAA:BBBB:ffff::9", "2001:db8:aaaa:bbbb::/64"],
-		["2001:db8::1", "2001:db8:0:0::/64"],
+		["2001:db8::1", "2001:db8::/64"],
 		["::ffff:203.0.113.7", "203.0.113.7"],
 	])("counts IPv6 client %s by its /64 prefix", async (ip, bucket) => {
 		send.mockResolvedValue({} as never);

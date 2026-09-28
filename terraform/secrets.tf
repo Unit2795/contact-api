@@ -1,4 +1,5 @@
-# Secrets live only in Terraform state (encrypted S3) and the Lambda environment, never in git.
+# Secrets live only in Terraform state (encrypted S3), the Lambda environment and, for site keys, SSM SecureString
+# parameters. Never in git.
 
 resource "random_password" "hmac_secret" {
   length  = 64
@@ -15,13 +16,13 @@ resource "random_password" "site_key" {
 # Published for each consuming site's Terraform to read when configuring its CDN origin.
 resource "aws_ssm_parameter" "site_key" {
   for_each = local.sites
-  name     = "/${var.name}/sites/${each.key}/origin-key"
+  name     = "/${local.name}/sites/${each.key}/origin-key"
   type     = "SecureString"
   value    = random_password.site_key[each.key].result
 }
 
 resource "aws_ssm_parameter" "origin_domain" {
-  name  = "/${var.name}/origin-domain"
+  name  = "/${local.name}/origin-domain"
   type  = "String"
   value = local.origin_domain
 }

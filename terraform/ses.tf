@@ -1,5 +1,5 @@
-# Sender domain identities must already be verified in SES; this stack only references them. Recipients need no
-# identity unless the account is still in the SES sandbox.
+# Sender domain identities must already be verified in SES; this stack only references them. The account must be out
+# of the SES sandbox: there, SES also checks permission on each recipient's identity, which this policy doesn't grant.
 data "aws_sesv2_email_identity" "sender" {
   for_each       = local.sender_domains
   email_identity = each.key

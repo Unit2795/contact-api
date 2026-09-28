@@ -4,12 +4,6 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-variable "name" {
-  description = "Prefix for resource names and SSM parameter paths."
-  type        = string
-  default     = "contact-api"
-}
-
 variable "reserved_concurrency" {
   description = "Hard cap on concurrent executions; bounds cost under abuse. The stamp GIF runs on every page view, so keep it above 1."
   type        = number

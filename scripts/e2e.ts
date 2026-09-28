@@ -1,6 +1,6 @@
 // End-to-end checks against the deployed Function URL (bypasses CloudFront).
 // Safe by default: sends no email and uses no rate-limit quota.
-// `--send` adds one real submission: emails the form's recipient and uses 1 of today's per-IP quota.
+// `--send` adds one real submission: emails the form's recipient and uses 1 of the form's daily per-client quota and 1 of its monthly quota.
 // Config comes from .env (see .env.example) or the environment.
 import { readFileSync } from "node:fs";
 
@@ -78,7 +78,7 @@ if (send) {
 		`got ${real.status} ${realBody}`,
 	);
 } else {
-	console.log("ℹ️  Skipped real send (add --send; emails the recipient, uses per-IP quota)");
+	console.log("ℹ️  Skipped real send (add --send; emails the recipient, uses daily and monthly quota)");
 }
 
 process.exitCode = failures ? 1 : 0;

@@ -1,4 +1,5 @@
 import { ConditionalCheckFailedException, DynamoDBClient, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
+import ipaddr from "ipaddr.js";
 import type { FormConfig } from "./config";
 
 const TABLE_NAME = process.env.TABLE_NAME;
@@ -20,19 +21,11 @@ export function consumeFormMonthly(form: FormConfig, now = new Date()): Promise<
 }
 
 // One IPv6 host usually controls a whole /64 of addresses, so IPv6 clients are counted by their /64 prefix.
+// process() also turns IPv4-mapped IPv6 addresses (::ffff:a.b.c.d) back into plain IPv4.
 function clientBucket(ip: string): string {
-	if (!ip.includes(":")) return ip;
-
-	const mappedIpv4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip)?.[1];
-	if (mappedIpv4) return mappedIpv4;
-
-	// Expand "::" so the first four groups can be read, e.g. 2001:db8::1 -> 2001:db8:0:0:0:0:0:1.
-	const [head, tail] = ip.split("::");
-	const headGroups = head ? head.split(":") : [];
-	const tailGroups = tail ? tail.split(":") : [];
-	const zeros = tail === undefined ? [] : Array(8 - headGroups.length - tailGroups.length).fill("0");
-	const groups = [...headGroups, ...zeros, ...tailGroups];
-	return `${groups.slice(0, 4).map((group) => parseInt(group, 16).toString(16)).join(":")}::/64`;
+	const address = ipaddr.process(ip);
+	if (address.kind() === "ipv4") return address.toString();
+	return `${ipaddr.IPv6.networkAddressFromCIDR(`${address}/64`)}/64`;
 }
 
 // Atomic increment-if-below-cap: a single conditional write, no read-then-write race.
