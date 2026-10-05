@@ -20,15 +20,15 @@
 	},
 	"packageManager": "pnpm@12.6.0",
 	"devDependencies": {
-		"@types/aws-lambda": "^8.10.163",
-		"@types/node": "^24.19.0",
+		"@types/aws-lambda": "^8.10.164",
+		"@types/node": "^24.19.1",
 		"esbuild": "^0.28.2",
 		"typescript": "^7.0.2",
-		"vitest": "^5.0.2"
+		"vitest": "^5.0.3"
 	},
 	"dependencies": {
-		"@aws-sdk/client-dynamodb": "^3.1141.0",
-		"@aws-sdk/client-sesv2": "^3.1141.0",
+		"@aws-sdk/client-dynamodb": "^3.1146.0",
+		"@aws-sdk/client-sesv2": "^3.1146.0",
 		"ipaddr.js": "^2.5.0",
 		"zod": "^4.6.5"
 	}
